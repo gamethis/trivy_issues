@@ -1,0 +1,88 @@
+name: Trivy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Run static analysis using Trivy for sarif artifact upload
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: "fs"
+        scanners: "vuln,secret,config"
+        ignore-unfixed: true
+        format: "sarif"
+        output: "trivy-results.sarif"
+        severity: "MEDIUM,HIGH,CRITICAL"
+        exit-code: 0
+
+    - name: Upload Trivy scan results to GH
+      uses: actions/upload-artifact@v3
+      with:
+        path: trivy-results.*
+        name: trivy-results
+        retention-days: 30
+
+    - name: Run static analysis and fail on high and/or critical vulnerabilities
+      id: critical
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: "fs"
+        scanners: "vuln,secret,config"
+        ignore-unfixed: true
+        format: "table"
+        severity: "HIGH,CRITICAL"
+        exit-code: 1
+        output: "trivy-results.table"
+        trivy_ignores: ""
+      continue-on-error: true
+
+    - name: Post critical Trivy scan output as PR comment for inspection
+      uses: actions/github-script@v6
+      if: steps.critical.outcome == 'failure'
+      with:
+        script: |
+          const fs = require('fs');
+          const trivyTable = fs.readFileSync('trivy-results.table', 'utf8');
+
+          const commentBody = `
+            <h2 align="center">🚨 Trivy scan has detected HIGH and/or CRITICAL vulnerabilties.🚨</h2>
+
+            \`\`\`plaintext
+            ${trivyTable}
+            \`\`\`
+          `
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: commentBody
+          })
+
+    - name: Apply Label
+      if: steps.critical.outcome == 'failure'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.addLabels({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            labels: ["vulnerability"]
+          });
+
+    - name: Fail the workflow at the end if a high/critical issue is found
+      if: steps.critical.outcome == 'failure'
+      run: |
+        echo "Trivy has detected a high and/or critical issue."
+        exit 1
+      shell: bash
