@@ -22,6 +22,7 @@ jobs:
         format: "sarif"
         output: "trivy-results.sarif"
         severity: "MEDIUM,HIGH,CRITICAL"
+        trivyignores: ".trivyignore.yaml"
         exit-code: 0
 
     - name: Upload Trivy scan results to GH
@@ -42,7 +43,7 @@ jobs:
         severity: "HIGH,CRITICAL"
         exit-code: 1
         output: "trivy-results.table"
-        trivy_ignores: ""
+        trivyignores: ".trivyignore.yaml"
       continue-on-error: true
 
     - name: Post critical Trivy scan output as PR comment for inspection
